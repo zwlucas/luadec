@@ -1,11 +1,9 @@
-name: Build Windows Binaries
+name: Build Windows Binaries (Fixed)
 
 on:
   push:
     branches: [ "master", "main" ]
-  pull_request:
-    branches: [ "master", "main" ]
-  workflow_dispatch: # Permite rodar manualmente pelo botão "Run workflow"
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,25 +12,45 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Gera versões 64-bit e 32-bit (útil para Lua de jogos antigos)
-        arch: [x64, Win32]
+        # Lua 5.1 geralmente precisa ser 32-bit (Win32) para manter compatibilidade
+        # com os tamanhos de inteiros/size_t de jogos antigos.
+        arch: [Win32, x64]
 
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
-        submodules: recursive  # CRÍTICO: Baixa o código do Lua (submódulo)
+        submodules: recursive
+
+    - name: Create CMakeLists.txt
+      # ESTE PASSO É A MÁGICA. Ele cria o arquivo de build que falta.
+      shell: cmd
+      run: |
+        echo cmake_minimum_required(VERSION 3.10) > CMakeLists.txt
+        echo project(luadec C) >> CMakeLists.txt
+        echo. >> CMakeLists.txt
+        echo # Configurar diretorios >> CMakeLists.txt
+        echo set(LUA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lua-5.1/src") >> CMakeLists.txt
+        echo include_directories(${LUA_DIR}) >> CMakeLists.txt
+        echo add_definitions(-D_CRT_SECURE_NO_WARNINGS) >> CMakeLists.txt
+        echo. >> CMakeLists.txt
+        echo # Fontes do Lua 5.1 (removendo lua.c e luac.c para nao dar conflito de main) >> CMakeLists.txt
+        echo file(GLOB LUA_SOURCES "${LUA_DIR}/*.c") >> CMakeLists.txt
+        echo list(REMOVE_ITEM LUA_SOURCES "${LUA_DIR}/lua.c" "${LUA_DIR}/luac.c") >> CMakeLists.txt
+        echo. >> CMakeLists.txt
+        echo # Fontes do Luadec >> CMakeLists.txt
+        echo file(GLOB LUADEC_SOURCES "luadec/*.c") >> CMakeLists.txt
+        echo. >> CMakeLists.txt
+        echo # Gerar Executavel >> CMakeLists.txt
+        echo add_executable(luadec ${LUADEC_SOURCES} ${LUA_SOURCES}) >> CMakeLists.txt
 
     - name: Configure CMake
-      # Gera os arquivos de projeto do Visual Studio para a arquitetura escolhida
       run: cmake -S . -B build -A ${{ matrix.arch }}
 
     - name: Build Release
-      # Compila em modo Release (otimizado)
       run: cmake --build build --config Release
 
-    - name: Prepare Artifact
-      # Renomeia o executável para identificar a arquitetura
+    - name: Rename and Prepare Artifact
       shell: cmd
       run: |
         cd build\Release
