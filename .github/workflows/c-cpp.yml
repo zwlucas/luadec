@@ -1,0 +1,45 @@
+name: Build Windows Binaries
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+  workflow_dispatch: # Permite rodar manualmente pelo botão "Run workflow"
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Gera versões 64-bit e 32-bit (útil para Lua de jogos antigos)
+        arch: [x64, Win32]
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive  # CRÍTICO: Baixa o código do Lua (submódulo)
+
+    - name: Configure CMake
+      # Gera os arquivos de projeto do Visual Studio para a arquitetura escolhida
+      run: cmake -S . -B build -A ${{ matrix.arch }}
+
+    - name: Build Release
+      # Compila em modo Release (otimizado)
+      run: cmake --build build --config Release
+
+    - name: Prepare Artifact
+      # Renomeia o executável para identificar a arquitetura
+      shell: cmd
+      run: |
+        cd build\Release
+        ren luadec.exe luadec-${{ matrix.arch }}.exe
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: luadec-${{ matrix.arch }}
+        path: build/Release/
